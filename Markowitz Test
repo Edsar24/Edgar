@@ -1,0 +1,203 @@
+import yfinance as yf
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+# Define the list of stock tickers (replace with your own selection)
+stock_tickers = ['AAPL', 'GOOGL', 'AMZN', 'MSFT', 'TSLA', 'NVDA', 'JPM', 'GS', 'INTC', 'CSCO',
+                 'BA', 'GE', 'IBM', 'WMT', 'CVX', 'XOM', 'AAPL', 'BA', 'KO', 'PEP',
+                 'GSK', 'PFE', 'JNJ', 'MRK', 'NKE', 'DIS', 'MCD', 'V', 'MA', 'IBM',
+                 'T', 'VZ', 'DIS', 'CMCSA', 'NFLX', 'ATVI', 'AMD', 'IBM', 'IBM', 'GS',
+                 'JPM', 'AAPL', 'GOOGL', 'AMZN', 'MSFT', 'TSLA', 'NVDA', 'JPM', 'GS', 'INTC']
+
+# Fetch historical stock prices for the last 5 years
+start_date = '2018-11-17'
+end_date = '2023-11-17'
+stock_prices = yf.download(stock_tickers, start=start_date, end=end_date)['Adj Close']
+
+# Drop columns with missing data
+stock_prices = stock_prices.dropna(axis=1, how='any')
+
+# Calculate daily returns
+returns = stock_prices.pct_change().dropna()
+
+# Calculate correlation matrix
+correlation_matrix = returns.corr()
+
+# Plot correlation matrix using seaborn heatmap
+plt.figure(figsize=(15, 12))
+sns.heatmap(correlation_matrix, cmap='coolwarm', annot=True, fmt=".2f", linewidths=.5)
+plt.title('Correlation Matrix of 50 Stocks')
+plt.show()
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+import yfinance as yf
+import pandas as pd
+import numpy as np
+
+# Define the list of stock tickers
+stock_tickers = ['AAPL', 'GOOGL', 'BTC', 'MSFT', 'TSLA', 'NVDA', 'JPM', 'GS', 'INTC', 'CSCO',
+                 'BA', 'GE', 'IBM', 'WMT', 'CVX', 'XOM', 'AAPL', 'BA', 'KO', 'PEP',
+                 'GSK', 'PFE', 'JNJ', 'MRK', 'NKE', 'DIS', 'MCD', 'V', 'MA', 'IBM',
+                 'T', 'VZ', 'DIS', 'CMCSA', 'NFLX', 'ATVI', 'AMD', 'IBM', 'IBM', 'GS',
+                 'JPM', 'AAPL', 'GOOGL', 'AMZN', 'MSFT', 'TSLA', 'NVDA', 'JPM', 'GS', 'INTC']
+
+# Fetch historical stock prices for the last 5 years
+start_date = '2018-11-17'
+end_date = '2023-11-17'
+stock_prices = yf.download(stock_tickers, start=start_date, end=end_date)['Adj Close']
+
+# Drop columns with missing data
+stock_prices = stock_prices.dropna(axis=1, how='any')
+
+# Calculate annual returns and volatility for each stock
+returns = stock_prices.pct_change().dropna()
+annual_returns = returns.mean() * 252
+volatility = returns.std() * np.sqrt(252)
+
+# Calculate correlation matrix
+correlation_matrix = returns.corr()
+
+# Calculate a combined metric (e.g., profitability - volatility) for ranking
+combined_metric = annual_returns - volatility
+
+# Select the top 10 stocks based on high profitability, lower volatility, and negative or lower correlation
+selected_stocks = combined_metric.nlargest(10).index
+
+# Display the selected stocks
+print("Selected Stocks:")
+print(selected_stocks)
+
+
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+
+import yfinance as yf
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.optimize import minimize
+
+def get_stock_data(ticker, start_date, end_date):
+    try:
+        stock_data = yf.download(ticker, start=start_date, end=end_date)
+        return stock_data['Adj Close']
+    except Exception as e:
+        print(f"Failed to download data for {ticker}: {e}")
+        return None
+
+def calculate_annual_returns(stock_prices):
+    returns = stock_prices.pct_change().dropna()
+    annual_returns = returns.mean() * 252  # 252 trading days in a year
+    return annual_returns
+
+def calculate_covariance_matrix(returns):
+    cov_matrix = np.cov(returns, rowvar=False)
+    return cov_matrix
+
+def calculate_markowitz_returns(weights, returns):
+    portfolio_return = np.dot(returns, weights)
+    return portfolio_return
+
+def calculate_markowitz_volatility(weights, cov_matrix):
+    portfolio_volatility = np.sqrt(np.dot(weights.T, np.dot(cov_matrix, weights)))
+    return portfolio_volatility
+
+def calculate_markowitz_sharpe_ratio(weights, returns, cov_matrix, risk_free_rate):
+    portfolio_return = calculate_markowitz_returns(weights, returns)
+    portfolio_volatility = calculate_markowitz_volatility(weights, cov_matrix)
+    sharpe_ratio = (portfolio_return - risk_free_rate) / portfolio_volatility
+    return sharpe_ratio
+
+def markowitz_portfolio_optimization(returns, cov_matrix, risk_free_rate):
+    num_assets = len(returns)
+    initial_weights = np.ones(num_assets) / num_assets  # Equal weights initially
+
+    constraints = ({'type': 'eq', 'fun': lambda weights: np.sum(weights) - 1})  # Sum of weights equals 1
+
+    # Bounds for weights (each weight should be between 0 and 1)
+    bounds = tuple((0, 1) for asset in range(num_assets))
+
+    # Minimize negative Sharpe ratio (maximize Sharpe ratio)
+    result = minimize(
+        lambda weights: -calculate_markowitz_sharpe_ratio(weights, returns, cov_matrix, risk_free_rate),
+        initial_weights,
+        method='SLSQP',
+        bounds=bounds,
+        constraints=constraints
+    )
+
+    optimal_weights = result.x
+    optimal_portfolio_return = calculate_markowitz_returns(optimal_weights, returns)
+    optimal_portfolio_volatility = calculate_markowitz_volatility(optimal_weights, cov_matrix)
+
+    return optimal_weights, optimal_portfolio_return, optimal_portfolio_volatility
+
+# Set the start and end date for the historical data
+start_date = '2021-11-01'
+end_date = '2023-11-01'
+
+# Define stock tickers (excluding renewable energy stocks)
+stock_tickers = ['NVDA', 'TSLA', 'AAPL', 'MSFT', 'AMD', 'GOOGL', 'WMT', 'PEP', 'MCD','MRK']
+
+# Fetch historical stock prices for selected stocks
+stock_prices = [get_stock_data(ticker, start_date, end_date) for ticker in stock_tickers]
+
+# Filter out stocks with missing data
+stock_prices = [stock for stock in stock_prices if stock is not None]
+
+# Calculate annual returns for each stock
+returns_matrix = np.array([calculate_annual_returns(stock) for stock in stock_prices])
+
+# Calculate the covariance matrix
+cov_matrix = calculate_covariance_matrix(returns_matrix)
+
+# Set the risk-free rate (you can use the yield of a risk-free asset, like a government bond)
+risk_free_rate = 0.05  # 4% risk-free rate
+
+# Calculate Markowitz curve for a 4% target volatility
+returns = []
+volatilities = []
+target_volatility = 0.05
+for target_return in np.linspace(0.1, 0.3, num=100):
+    constraints = ({'type': 'eq', 'fun': lambda weights: np.sum(weights) - 1},
+                   {'type': 'eq', 'fun': lambda weights: calculate_markowitz_returns(weights, returns_matrix) - target_return})
+
+    result = minimize(
+        lambda weights: calculate_markowitz_volatility(weights, cov_matrix),
+        np.ones(len(returns_matrix)) / len(returns_matrix),
+        method='SLSQP',
+        bounds=tuple((0, 1) for asset in range(len(returns_matrix))),
+        constraints=constraints
+    )
+
+    weights = result.x
+    returns.append(target_return)
+    volatilities.append(calculate_markowitz_volatility(weights, cov_matrix))
+
+# Find the point where optimal_portfolio_volatility is closest to 5.5%
+index_closest_to_target = np.argmin(np.abs(np.array(volatilities) - target_volatility))
+optimal_portfolio_volatility_at_target = volatilities[index_closest_to_target]
+optimal_portfolio_return_at_target = returns[index_closest_to_target]
+
+# Print optimal portfolio weights
+optimal_weights, optimal_portfolio_return, optimal_portfolio_volatility = markowitz_portfolio_optimization(returns_matrix, cov_matrix, risk_free_rate)
+print("Optimal Portfolio Weights:")
+for ticker, weight in zip(stock_tickers, optimal_weights):
+    print(f"{ticker}: {weight:.4f}")
+
+# Plot Markowitz curve with the red dot
+plt.figure(figsize=(10, 6))
+plt.scatter(volatilities, returns, c=(np.array(returns) / np.array(volatilities)), marker='o')
+plt.scatter(optimal_portfolio_volatility_at_target, optimal_portfolio_return_at_target, color='red')  # Mark the red dot
+plt.title('Markowitz Curve - Stocks (Excluding Renewables) at 4% Volatility')
+plt.xlabel('Volatility')
+plt.ylabel('Return')
+plt.axvline(x=target_volatility, color='green', linestyle='--', label=f'Target Volatility: {target_volatility * 100:.2f}%')
+plt.legend()
+
+plt.colorbar(label='Sharpe Ratio')
+plt.show()
+
