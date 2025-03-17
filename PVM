@@ -1,0 +1,68 @@
+WITH Ptc as (
+    SELECT CASE WHEN {{Period_to_compare}} = 'Last Year' THEN 12
+                WHEN {{Period_to_compare}} = 'Last Month' THEN 1
+                WHEN {{Period_to_compare}} = 'Next Month' THEN -1
+                WHEN {{Period_to_compare}} = 'Last Quarter' THEN 3
+    END AS period
+)
+
+,PVM_1 AS (
+    SELECT 
+        *, 
+        (DATE_PART('year', AGE(date_trunc('month', {{month}}) - INTERVAL '1 month' * (SELECT period FROM Ptc), 
+        date_trunc('month', {{month}}))) * 12 + DATE_PART('month', AGE(date_trunc('month', {{month}}) - INTERVAL '1 month' * (SELECT period FROM Ptc), 
+        date_trunc('month', {{month}}))))*-1 AS month_difference 
+    FROM {{#4763-pvm-v-1}} as x WHERE status IS NULL
+)
+
+,Raw as (
+    SELECT 
+        codename, month, city, 
+        revenue_w_o_vat as rev, 
+        LEAD(revenue_w_o_vat, month_difference::INT) OVER (PARTITION BY codename ORDER BY codename, month DESC) as rev_LY,
+        occupied_nights as vol, 
+        LEAD(occupied_nights, month_difference::INT) OVER (PARTITION BY codename ORDER BY codename, month DESC) as vol_LY,
+        daily_rev_w_o_vat as dr, 
+        LEAD(daily_rev_w_o_vat, month_difference::INT) OVER (PARTITION BY codename ORDER BY codename, month DESC) as dr_LY
+
+    FROM PVM_1
+    
+    ORDER BY codename, month DESC
+)
+
+,Raw_2 AS (
+    SELECT 
+        month, codename, city, vol, vol_LY, dr, dr_LY, rev, rev_LY,
+        CASE WHEN (vol IS NULL OR vol_LY IS NULL OR dr IS NULL) THEN NULL ELSE (dr::DECIMAL - dr_LY::DECIMAL)*vol END AS "Price/Cost-vs N-1",
+        (rev::DECIMAL - rev_LY::DECIMAL) AS "Total-vs N-1"
+    
+    FROM Raw
+)
+
+,final as (    
+    SELECT 
+        apartments.codename, r.city, r.month, r.Vol, r.vol_LY as vol_sp, r.dr, r.dr_LY as dr_sp, "Price/Cost-vs N-1", "Total-vs N-1",
+        ("Total-vs N-1"::DECIMAL - "Price/Cost-vs N-1"::DECIMAL) AS "Vol/Mix-vs N-1", rev, rev_LY as rev_sp
+        
+    FROM Raw_2 r
+        LEFT JOIN apartments ON r.codename = apartments.codename
+    
+    WHERE true
+        [[AND r.month = date_trunc('month',{{month}})]]
+        [[AND r.city = {{City}}]]
+        [[AND {{apartments.codename}}]]
+    
+    ORDER BY apartments.codename ASC
+)
+
+,X AS (
+    SELECT 
+        *, CASE WHEN (vol = 0 OR vol_sp = 0) THEN NULL ELSE (vol::DECIMAL / vol_sp::DECIMAL)-1 end as vol_pct,
+        CASE WHEN (rev = 0 OR rev_sp = 0) THEN NULL ELSE (rev::DECIMAL / rev_sp::DECIMAL)-1 end as rev_pct,
+        CASE WHEN (dr = 0 OR dr_sp = 0) THEN NULL ELSE (dr::DECIMAL / dr_sp::DECIMAL)-1 end as dr_pct
+    FROM final
+)
+
+SELECT *, (vol::DECIMAL * dr_sp) AS Exp_rev, CASE WHEN ("Price/Cost-vs N-1" IS NULL OR vol IS NULL OR dr_sp IS NULL
+                                                        OR "Price/Cost-vs N-1" = 0 OR vol = 0 OR dr_sp = 0) THEN NULL ELSE ("Price/Cost-vs N-1" / (vol::DECIMAL * dr_sp)) END as Real_Growth 
+FROM X 
